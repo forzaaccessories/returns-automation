@@ -134,11 +134,47 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
   const shipment = await bobgoRequest("/shipments", "POST", shipmentBookingPayload);
   console.log("BobGo /shipments raw response:", JSON.stringify(shipment));
 
+  // 3. BobGo generates the actual waybill/label asynchronously after
+  // booking (note "submission_status":"pending-rates" on the initial
+  // response) - poll briefly until it's ready, rather than assuming
+  // it's available instantly.
+  const waybillUrl = await pollForWaybillDocument(shipment.id);
+
   return {
     shipmentId: shipment.id,
-    trackingNumber: shipment.tracking_number,
-    waybillUrl: shipment.waybill_document_url || shipment.label_url,
+    trackingNumber: shipment.tracking_reference,
+    waybillUrl,
   };
 }
+
+/**
+ * Polls GET /shipments/{id} until a waybill/label document URL appears,
+ * or gives up after ~30 seconds. I don't yet have confirmation of the
+ * exact field name BobGo uses for the ready document, so this checks a
+ * few plausible ones - if this keeps failing, the logged raw response
+ * on each attempt will show us the real field name to use instead.
+ */
+async function pollForWaybillDocument(shipmentId, attempts = 8, delayMs = 4000) {
+  for (let i = 0; i < attempts; i++) {
+    const shipment = await bobgoRequest(`/shipments/${shipmentId}`, "GET");
+    console.log(`BobGo shipment poll attempt ${i + 1}:`, JSON.stringify(shipment));
+
+    const candidateUrl =
+      shipment.waybill_document_url ||
+      shipment.label_url ||
+      shipment.document_url ||
+      shipment.provider_document_url ||
+      shipment.tracking_document_url ||
+      shipment.waybill_url;
+
+    if (candidateUrl) {
+      return candidateUrl;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  console.error(`No waybill document found for BobGo shipment ${shipmentId} after polling - continuing without it.`);
+  return null;
 
 module.exports = { bookReturnCollection };

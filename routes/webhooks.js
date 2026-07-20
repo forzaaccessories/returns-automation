@@ -70,6 +70,8 @@ async function processReturnRequest(payload) {
   const reverseFulfillmentOrderId = reverseFulfillmentOrders?.nodes?.[0]?.id;
   if (!reverseFulfillmentOrderId) {
     console.error(`No reverse fulfillment order found for return on ${order.name} - cannot upload waybill.`);
+  } else if (!collection.waybillUrl) {
+    console.error(`BobGo waybill wasn't ready in time for order ${order.name} - skipping Shopify label upload. Tracking: ${collection.trackingNumber}. You may need to upload it manually or re-run this step once BobGo finishes processing.`);
   } else {
     await uploadReturnLabelAndNotify({
       reverseFulfillmentOrderId,
