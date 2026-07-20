@@ -176,5 +176,6 @@ async function pollForWaybillDocument(shipmentId, attempts = 8, delayMs = 4000) 
 
   console.error(`No waybill document found for BobGo shipment ${shipmentId} after polling - continuing without it.`);
   return null;
+}
 
 module.exports = { bookReturnCollection };
