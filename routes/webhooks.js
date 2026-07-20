@@ -114,7 +114,7 @@ async function processReturnRequest(payload) {
     const exchangeLines = exchangeLineItems.nodes.map((item) => {
       // Exchange items weren't part of the original order, so there's no
       // "previous" price to reuse - use the item's current Shopify price.
-      const lineItem = item.lineItems?.nodes?.[0];
+      const lineItem = item.lineItems?.[0];
       return {
         productCode: lineItem?.sku,
         quantity: item.quantity,
