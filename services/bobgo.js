@@ -29,9 +29,11 @@ async function bobgoRequest(path, method = "GET", body = null) {
  * sandbox (https://api.sandbox.bobgo.co.za/v2/) before going live —
  * parcel/rate fields can vary depending on which couriers you have enabled.
  */
-async function bookReturnCollection({ customer, address, parcels, reference }) {
+async function bookReturnCollection({ customer, address, parcels, reference, customerEmail }) {
+  const customerPhone = address.phone || customer.phone || "";
   const shipmentPayload = {
     collection_address: {
+      contact_name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || "Customer",
       company: `${customer.firstName} ${customer.lastName}`.trim(),
       street_address: address.address1,
       local_area: address.address2 || "",
@@ -39,9 +41,12 @@ async function bookReturnCollection({ customer, address, parcels, reference }) {
       zone: address.province,
       code: address.zip,
       country: address.country,
-      phone: address.phone || customer.phone || "",
+      phone: customerPhone,
+      contact_number: customerPhone,
+      contact_email: customerEmail || "",
     },
     delivery_address: {
+      contact_name: process.env.WAREHOUSE_NAME || "Warehouse",
       company: process.env.WAREHOUSE_NAME,
       street_address: process.env.WAREHOUSE_ADDRESS_1,
       local_area: process.env.WAREHOUSE_ADDRESS_2 || "",
@@ -50,6 +55,8 @@ async function bookReturnCollection({ customer, address, parcels, reference }) {
       code: process.env.WAREHOUSE_ZIP,
       country: process.env.WAREHOUSE_COUNTRY,
       phone: process.env.WAREHOUSE_PHONE,
+      contact_number: process.env.WAREHOUSE_PHONE,
+      contact_email: process.env.WAREHOUSE_EMAIL || "",
     },
     parcels: parcels && parcels.length
       ? parcels

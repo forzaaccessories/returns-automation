@@ -62,6 +62,7 @@ async function processReturnRequest(payload) {
     address,
     parcels: [],
     reference: order.name,
+    customerEmail: order.email,
   });
 
   // 2. Upload the waybill into Shopify's return record and let Shopify
