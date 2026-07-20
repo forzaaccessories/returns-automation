@@ -98,12 +98,18 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
   // provider_slug + service_level_code). I don't have confirmation this
   // exact shape is what /shipments expects - if this call errors, the
   // full error response will tell us what field name it actually wants.
-  const shipment = await bobgoRequest("/shipments", "POST", {
-    ...shipmentPayload,
+  const shipmentBookingPayload = {
+    collection_address_id: ratesResponse.collection_address_id,
+    delivery_address_id: ratesResponse.delivery_address_id,
+    parcels: shipmentPayload.parcels,
+    reference,
+    instruction: "customer_collection",
     rate_id: ratesResponse.id,
     provider_slug: cheapestRate.provider_slug,
     service_level_code: cheapestRate.service_level_code,
-  });
+  };
+  console.log("BobGo /shipments request payload:", JSON.stringify(shipmentBookingPayload));
+  const shipment = await bobgoRequest("/shipments", "POST", shipmentBookingPayload);
   console.log("BobGo /shipments raw response:", JSON.stringify(shipment));
 
   return {
