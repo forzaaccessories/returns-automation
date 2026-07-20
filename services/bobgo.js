@@ -99,8 +99,30 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
   // exact shape is what /shipments expects - if this call errors, the
   // full error response will tell us what field name it actually wants.
   const shipmentBookingPayload = {
-    collection_address_id: ratesResponse.collection_address_id,
-    delivery_address_id: ratesResponse.delivery_address_id,
+    collection_address: {
+      company: shipmentPayload.collection_address.company,
+      street_address: shipmentPayload.collection_address.street_address,
+      local_area: shipmentPayload.collection_address.local_area,
+      city: shipmentPayload.collection_address.city,
+      zone: shipmentPayload.collection_address.zone,
+      code: shipmentPayload.collection_address.code,
+      country: shipmentPayload.collection_address.country,
+    },
+    collection_contact_name: shipmentPayload.collection_address.contact_name,
+    collection_contact_number: shipmentPayload.collection_address.contact_number,
+    collection_contact_email: shipmentPayload.collection_address.contact_email,
+    delivery_address: {
+      company: shipmentPayload.delivery_address.company,
+      street_address: shipmentPayload.delivery_address.street_address,
+      local_area: shipmentPayload.delivery_address.local_area,
+      city: shipmentPayload.delivery_address.city,
+      zone: shipmentPayload.delivery_address.zone,
+      code: shipmentPayload.delivery_address.code,
+      country: shipmentPayload.delivery_address.country,
+    },
+    delivery_contact_name: shipmentPayload.delivery_address.contact_name,
+    delivery_contact_number: shipmentPayload.delivery_address.contact_number,
+    delivery_contact_email: shipmentPayload.delivery_address.contact_email,
     parcels: shipmentPayload.parcels,
     reference,
     instruction: "customer_collection",
