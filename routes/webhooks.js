@@ -2,10 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const { verifyShopifyWebhook } = require("../utils/verifyShopifyWebhook");
-const { getReturnDetails, addOrderNote } = require("../services/shopify");
+const { getReturnDetails, addOrderNote, uploadReturnLabelAndNotify } = require("../services/shopify");
 const { bookReturnCollection } = require("../services/bobgo");
 const { findSalesOrderByNumber, createCreditNote, createExchangeSalesOrder } = require("../services/unleashed");
-const { sendWaybillEmail } = require("../services/email");
 
 // IMPORTANT: this route needs the RAW body for HMAC verification,
 // so it's mounted with express.raw() in server.js (not express.json()).
@@ -47,7 +46,7 @@ async function processReturnRequest(payload) {
     return;
   }
 
-  const { order, returnLineItems, exchangeLineItems } = returnDetails;
+  const { order, returnLineItems, exchangeLineItems, reverseFulfillmentOrders } = returnDetails;
   const isExchange = exchangeLineItems?.nodes?.length > 0;
   const customer = order.customer || {};
   const address = order.shippingAddress || {};
@@ -60,20 +59,22 @@ async function processReturnRequest(payload) {
     reference: order.name,
   });
 
-  // 2. Email the waybill to the customer
-  await sendWaybillEmail({
-    to: order.email,
-    customerName: customer.firstName || "there",
-    orderName: order.name,
-    waybillUrl: collection.waybillUrl,
-    trackingNumber: collection.trackingNumber,
-    isExchange,
-  });
+  // 2. Upload the waybill into Shopify's return record and let Shopify
+  // send its own "your return label is ready" email to the customer.
+  const reverseFulfillmentOrderId = reverseFulfillmentOrders?.nodes?.[0]?.id;
+  if (!reverseFulfillmentOrderId) {
+    console.error(`No reverse fulfillment order found for return on ${order.name} - cannot upload waybill.`);
+  } else {
+    await uploadReturnLabelAndNotify({
+      reverseFulfillmentOrderId,
+      fileUrl: collection.waybillUrl,
+    });
+  }
 
   // 3. Leave a note on the Shopify order for staff visibility
   await addOrderNote(
     order.id,
-    `Automation: booked BobGo collection (tracking ${collection.trackingNumber}) and emailed customer.`
+    `Automation: booked BobGo collection (tracking ${collection.trackingNumber}) and uploaded waybill to Shopify - customer notified.`
   );
 
   // 4. Credit the return in Unleashed

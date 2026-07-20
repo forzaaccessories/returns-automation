@@ -64,6 +64,11 @@ async function getReturnDetails(returnGid) {
             }
           }
         }
+        reverseFulfillmentOrders(first: 5) {
+          nodes {
+            id
+          }
+        }
         order {
           id
           name
@@ -104,4 +109,42 @@ async function addOrderNote(orderGid, note) {
   await shopifyGraphQL(mutation, { input: { id: orderGid, note } });
 }
 
-module.exports = { getReturnDetails, addOrderNote };
+/**
+ * Uploads the BobGo waybill as the return's shipping label directly into
+ * Shopify's return/exchange record, and (with notifyCustomer: true) makes
+ * Shopify send its own "here's your return label" email to the customer -
+ * this is the same as manually using "Upload a return label" + ticking
+ * "Send notification to customer" in the admin UI.
+ */
+async function uploadReturnLabelAndNotify({ reverseFulfillmentOrderId, fileUrl }) {
+  const mutation = `
+    mutation ReverseDeliveryCreateWithShipping(
+      $reverseFulfillmentOrderId: ID!
+      $labelInput: ReverseDeliveryLabelInput
+      $notifyCustomer: Boolean
+    ) {
+      reverseDeliveryCreateWithShipping(
+        reverseFulfillmentOrderId: $reverseFulfillmentOrderId
+        labelInput: $labelInput
+        notifyCustomer: $notifyCustomer
+        reverseDeliveryLineItems: []
+      ) {
+        reverseDelivery { id }
+        userErrors { field message }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(mutation, {
+    reverseFulfillmentOrderId,
+    labelInput: { fileUrl },
+    notifyCustomer: true,
+  });
+
+  const result = data.reverseDeliveryCreateWithShipping;
+  if (result.userErrors?.length) {
+    throw new Error(`Failed to upload return label: ${JSON.stringify(result.userErrors)}`);
+  }
+  return result.reverseDelivery;
+}
+
+module.exports = { getReturnDetails, addOrderNote, uploadReturnLabelAndNotify };
