@@ -1,16 +1,17 @@
 const fetch = require("node-fetch");
+const { getAccessToken } = require("./shopifyAuth");
 
 const STORE = process.env.SHOPIFY_STORE;
-const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN;
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-07";
 const ENDPOINT = `https://${STORE}/admin/api/${API_VERSION}/graphql.json`;
 
 async function shopifyGraphQL(query, variables = {}) {
+  const token = await getAccessToken();
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token": TOKEN,
+      "X-Shopify-Access-Token": token,
     },
     body: JSON.stringify({ query, variables }),
   });

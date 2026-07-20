@@ -4,9 +4,9 @@
  */
 require("dotenv").config();
 const fetch = require("node-fetch");
+const { getAccessToken } = require("./services/shopifyAuth");
 
 const STORE = process.env.SHOPIFY_STORE;
-const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN;
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-07";
 const CALLBACK_URL = process.env.RENDER_APP_URL; // e.g. https://returns-automation.onrender.com/webhooks/returns-request
 
@@ -15,6 +15,8 @@ async function main() {
     console.error("Set RENDER_APP_URL in your .env first, e.g. https://returns-automation.onrender.com/webhooks/returns-request");
     process.exit(1);
   }
+
+  const token = await getAccessToken();
 
   const mutation = `
     mutation {
@@ -35,7 +37,7 @@ async function main() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token": TOKEN,
+      "X-Shopify-Access-Token": token,
     },
     body: JSON.stringify({ query: mutation }),
   });
