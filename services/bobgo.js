@@ -59,24 +59,44 @@ async function bookReturnCollection({ customer, address, parcels, reference }) {
   };
 
   // 1. Get a rate/quote
-  const rates = await bobgoRequest("/rates", "POST", shipmentPayload);
-  console.log("BobGo /rates raw response:", JSON.stringify(rates));
+  const ratesResponse = await bobgoRequest("/rates", "POST", shipmentPayload);
+  console.log("BobGo /rates raw response:", JSON.stringify(ratesResponse));
 
-  const availableRates = rates.rates || [];
-  if (!availableRates.length) {
-    throw new Error(`BobGo returned no rates for this collection. Full response: ${JSON.stringify(rates)}`);
+  // BobGo nests rates per courier: provider_rate_requests[].responses[]
+  const allRates = (ratesResponse.provider_rate_requests || [])
+    .filter((provider) => provider.status === "success")
+    .flatMap((provider) =>
+      (provider.responses || [])
+        .filter((r) => r.status === "success")
+        .map((r) => ({
+          provider_slug: provider.provider_slug,
+          provider_name: provider.provider_name,
+          service_level_code: r.service_level_code,
+          rate_amount: r.rate_amount, // VAT-inclusive, what you're actually charged
+        }))
+    );
+
+  if (!allRates.length) {
+    throw new Error(`BobGo returned no usable rates for this collection. Full response: ${JSON.stringify(ratesResponse)}`);
   }
 
-  // Always pick the cheapest available rate, regardless of the order BobGo returns them in.
-  const cheapestRate = [...availableRates].sort(
-    (a, b) => parseFloat(a.rate ?? a.total_charge ?? a.price) - parseFloat(b.rate ?? b.total_charge ?? b.price)
-  )[0];
+  // Always pick the cheapest available rate across every courier.
+  const cheapestRate = [...allRates].sort((a, b) => a.rate_amount - b.rate_amount)[0];
+  console.log("Cheapest BobGo rate selected:", JSON.stringify(cheapestRate));
 
-  // 2. Book the shipment using the chosen rate
+  // 2. Book the shipment using the chosen rate.
+  // NOTE: I'm constructing this from the fields BobGo's /rates response
+  // actually returned (the rates request `id`, plus the chosen courier's
+  // provider_slug + service_level_code). I don't have confirmation this
+  // exact shape is what /shipments expects - if this call errors, the
+  // full error response will tell us what field name it actually wants.
   const shipment = await bobgoRequest("/shipments", "POST", {
-    ...shipmentPayload,
-    rate_id: cheapestRate.rate_id,
+    rate_id: ratesResponse.id,
+    provider_slug: cheapestRate.provider_slug,
+    service_level_code: cheapestRate.service_level_code,
+    reference,
   });
+  console.log("BobGo /shipments raw response:", JSON.stringify(shipment));
 
   return {
     shipmentId: shipment.id,
