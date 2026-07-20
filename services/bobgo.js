@@ -53,15 +53,24 @@ async function bookReturnCollection({ customer, address, parcels, reference }) {
     },
     parcels: parcels && parcels.length
       ? parcels
-      : [{ parcel_description: "Return/exchange parcel", submitted_length_cm: 30, submitted_width_cm: 20, submitted_height_cm: 10, submitted_weight_kg: 1 }],
+      : [{ parcel_description: "Return/exchange parcel", submitted_length_cm: 30, submitted_width_cm: 20, submitted_height_cm: 10, submitted_weight_kg: 1, declared_value: 500 }],
     reference,
     instruction: "customer_collection", // collect FROM customer
   };
 
   // 1. Get a rate/quote
   const rates = await bobgoRequest("/rates", "POST", shipmentPayload);
-  const cheapestRate = rates.rates?.[0];
-  if (!cheapestRate) throw new Error("BobGo returned no rates for this collection.");
+  console.log("BobGo /rates raw response:", JSON.stringify(rates));
+
+  const availableRates = rates.rates || [];
+  if (!availableRates.length) {
+    throw new Error(`BobGo returned no rates for this collection. Full response: ${JSON.stringify(rates)}`);
+  }
+
+  // Always pick the cheapest available rate, regardless of the order BobGo returns them in.
+  const cheapestRate = [...availableRates].sort(
+    (a, b) => parseFloat(a.rate ?? a.total_charge ?? a.price) - parseFloat(b.rate ?? b.total_charge ?? b.price)
+  )[0];
 
   // 2. Book the shipment using the chosen rate
   const shipment = await bobgoRequest("/shipments", "POST", {
