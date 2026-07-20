@@ -66,6 +66,7 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
   };
 
   // 1. Get a rate/quote
+  console.log("BobGo /rates request payload:", JSON.stringify(shipmentPayload));
   const ratesResponse = await bobgoRequest("/rates", "POST", shipmentPayload);
   console.log("BobGo /rates raw response:", JSON.stringify(ratesResponse));
 
