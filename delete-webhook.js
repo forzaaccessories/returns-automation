@@ -1,6 +1,6 @@
 /**
- * Run this ONCE to register the webhook, after your Render app is live.
- * Usage: node register-webhook.js
+ * Usage: node delete-webhook.js "gid://shopify/WebhookSubscription/XXXXXXXXXX"
+ * Get the ID to delete from running list-webhooks.js first.
  */
 require("dotenv").config();
 const fetch = require("node-fetch");
@@ -8,26 +8,19 @@ const { getAccessToken } = require("./services/shopifyAuth");
 
 const STORE = process.env.SHOPIFY_STORE;
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-07";
-const CALLBACK_URL = process.env.RENDER_APP_URL; // e.g. https://returns-automation.onrender.com/webhooks/returns-approved
 
 async function main() {
-  if (!CALLBACK_URL) {
-    console.error("Set RENDER_APP_URL in your .env first, e.g. https://returns-automation.onrender.com/webhooks/returns-approved");
+  const idToDelete = process.argv[2];
+  if (!idToDelete) {
+    console.error('Usage: node delete-webhook.js "gid://shopify/WebhookSubscription/XXXXXXXXXX"');
     process.exit(1);
   }
 
   const token = await getAccessToken();
-
   const mutation = `
     mutation {
-      webhookSubscriptionCreate(
-        topic: RETURNS_APPROVE
-        webhookSubscription: {
-          callbackUrl: "${CALLBACK_URL}"
-          format: JSON
-        }
-      ) {
-        webhookSubscription { id callbackUrl }
+      webhookSubscriptionDelete(id: "${idToDelete}") {
+        deletedWebhookSubscriptionId
         userErrors { field message }
       }
     }

@@ -6,9 +6,14 @@ const { getReturnDetails, addOrderNote, uploadReturnLabelAndNotify } = require("
 const { bookReturnCollection } = require("../services/bobgo");
 const { findSalesOrderByNumber, createCreditNote, createExchangeSalesOrder } = require("../services/unleashed");
 
-// IMPORTANT: this route needs the RAW body for HMAC verification,
+// This fires when YOU approve a return/exchange request in Shopify admin
+// (topic: returns/approve) - not when the customer first submits it.
+// This means the automation only runs after your manual review, so
+// self-serve requests never get auto-processed without a human check.
+//
+// This route needs the RAW body for HMAC verification,
 // so it's mounted with express.raw() in server.js (not express.json()).
-router.post("/returns-request", async (req, res) => {
+router.post("/returns-approved", async (req, res) => {
   const hmac = req.get("X-Shopify-Hmac-Sha256");
   const valid = verifyShopifyWebhook(req.body, hmac, process.env.SHOPIFY_WEBHOOK_SECRET);
 
