@@ -111,13 +111,16 @@ async function processReturnRequest(payload) {
 
   // 5. If it's an exchange, create the new sales order for the warehouse to pick
   if (isExchange && unleashedOrder) {
-    const exchangeLines = exchangeLineItems.nodes.map((item) => ({
-      productCode: item.variant.sku,
-      quantity: item.quantity,
+    const exchangeLines = exchangeLineItems.nodes.map((item) => {
       // Exchange items weren't part of the original order, so there's no
       // "previous" price to reuse - use the item's current Shopify price.
-      unitPrice: parseFloat(item.variant.price),
-    }));
+      const lineItem = item.lineItems?.nodes?.[0];
+      return {
+        productCode: lineItem?.sku,
+        quantity: item.quantity,
+        unitPrice: parseFloat(lineItem?.variant?.price ?? 0),
+      };
+    });
     await createExchangeSalesOrder({
       customerCode: unleashedOrder.Customer.Guid,
       lines: exchangeLines,

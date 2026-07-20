@@ -56,11 +56,12 @@ async function getReturnDetails(returnGid) {
           nodes {
             id
             quantity
-            variant {
-              id
-              sku
-              title
-              price
+            lineItems(first: 5) {
+              nodes {
+                sku
+                title
+                variant { id title price }
+              }
             }
           }
         }
