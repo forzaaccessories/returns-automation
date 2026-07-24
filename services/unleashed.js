@@ -66,6 +66,7 @@ async function createCreditNote({ customerCode, lines, reason, referenceOrderNam
     Reference: referenceOrderName || "",
     Warehouse: { WarehouseCode: process.env.UNLEASHED_WAREHOUSE_CODE },
     Customer: { Guid: customerCode },
+    Tax: { TaxCode: process.env.UNLEASHED_TAX_CODE },
     CreditLines: lines.map((line) => ({
       Product: { ProductCode: line.productCode },
       CreditQuantity: line.quantity,
