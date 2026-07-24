@@ -48,23 +48,33 @@ async function findSalesOrderByNumber(orderNumber) {
 }
 
 /**
- * Creates a Credit Note against a completed Sales Order/Invoice for the
- * returned line items. `lines` = [{ productCode, quantity, unitPrice }]
+ * Creates a Credit Note for the returned line items.
+ *
+ * IMPORTANT: Unleashed's API only supports creating "Free Credit" notes
+ * (POST /CreditNotes/FreeCredit) - it does NOT support creating a credit
+ * note directly linked to an existing Sales Order/Invoice via API (that's
+ * only possible manually in their UI). A Free Credit is a standalone
+ * credit note, so we put the Shopify order number in the Reference field
+ * for traceability back to the original order.
+ * Docs: https://apidocs.unleashedsoftware.com/CreditNotes
  */
-async function createCreditNote({ salesOrderGuid, customerCode, lines, reason }) {
+async function createCreditNote({ customerCode, lines, reason, referenceOrderName }) {
   const payload = {
+    Comments: reason || "Customer return",
+    CreditDate: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+    ExchangeRate: 1,
+    Reference: referenceOrderName || "",
+    Warehouse: { WarehouseCode: process.env.UNLEASHED_WAREHOUSE_CODE },
     Customer: { Guid: customerCode },
-    CreditDate: new Date().toISOString(),
-    SalesOrders: [{ Guid: salesOrderGuid }],
     CreditLines: lines.map((line) => ({
       Product: { ProductCode: line.productCode },
-      OrderQuantity: line.quantity,
-      UnitPrice: line.unitPrice,
+      CreditQuantity: line.quantity,
+      CreditPrice: line.unitPrice,
+      Reason: reason || "Customer return",
       Return: true, // return the stock to inventory
-      Comments: reason || "Customer return",
     })),
   };
-  return unleashedRequest("/CreditNotes", "POST", payload);
+  return unleashedRequest("/CreditNotes/FreeCredit", "POST", payload);
 }
 
 /**

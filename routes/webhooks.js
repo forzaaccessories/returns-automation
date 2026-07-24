@@ -105,10 +105,10 @@ async function processReturnRequest(payload) {
       };
     });
     await createCreditNote({
-      salesOrderGuid: unleashedOrder.Guid,
       customerCode: unleashedOrder.Customer.Guid,
       lines: creditLines,
       reason: isExchange ? "Exchange" : "Return",
+      referenceOrderName: order.name,
     });
   }
 
