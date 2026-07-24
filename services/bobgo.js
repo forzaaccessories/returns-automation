@@ -138,7 +138,7 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
   // booking (note "submission_status":"pending-rates" on the initial
   // response) - poll briefly until it's ready, rather than assuming
   // it's available instantly.
-  const waybillUrl = await pollForWaybillDocument(shipment.id);
+  const waybillUrl = await pollForWaybillDocument(shipment.tracking_reference);
 
   return {
     shipmentId: shipment.id,
@@ -148,65 +148,43 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
 }
 
 /**
- * Polls GET /shipments/{id} until a waybill/label document URL appears,
- * or gives up after ~30 seconds. I don't yet have confirmation of the
- * exact field name BobGo uses for the ready document, so this checks a
- * few plausible ones - if this keeps failing, the logged raw response
- * on each attempt will show us the real field name to use instead.
+ * Polls the confirmed BobGo endpoint GET /shipments/waybill until the
+ * waybill PDF URL is ready, or gives up after ~30 seconds.
+ * Confirmed endpoint from BobGo's docs: takes tracking_references as a
+ * JSON array in the query string, e.g. ?tracking_references=["UASDKRRB"]
  */
-async function pollForWaybillDocument(shipmentId, attempts = 8, delayMs = 4000) {
+async function pollForWaybillDocument(trackingReference, attempts = 8, delayMs = 4000) {
+  const query = `tracking_references=${encodeURIComponent(JSON.stringify([trackingReference]))}`;
+
   for (let i = 0; i < attempts; i++) {
     let response;
     try {
-      response = await bobgoRequest(`/shipments?ids=${shipmentId}`, "GET");
+      response = await bobgoRequest(`/shipments/waybill?${query}`, "GET");
     } catch (err) {
-      console.error(`BobGo shipment poll attempt ${i + 1} failed, stopping poll (non-fatal):`, err.message);
-      return null;
+      console.log(`BobGo waybill poll attempt ${i + 1} - not ready yet or error:`, err.message);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
     }
-    const shipmentsArray = response.shipments || response.data || (Array.isArray(response) ? response : [response]);
-    if (shipmentsArray.length > 3) {
-      console.warn(`BobGo poll attempt ${i + 1}: filter didn't narrow results (${shipmentsArray.length} shipments returned) - logging summary only.`);
-    } else {
-      console.log(`BobGo shipment poll attempt ${i + 1}:`, JSON.stringify(response));
-    }
+    console.log(`BobGo waybill poll attempt ${i + 1}:`, JSON.stringify(response));
 
-    // Find the exact shipment by ID - can't assume it's first in the array,
-    // since the filter doesn't reliably narrow results down.
-    const shipment = shipmentsArray.find((s) => s.id === shipmentId) || shipmentsArray[0];
-
+    // Response shape unconfirmed beyond the endpoint/query format itself -
+    // check the plausible places a URL could live.
     const candidateUrl =
-      shipment?.waybill_document_url ||
-      shipment?.label_url ||
-      shipment?.document_url ||
-      shipment?.provider_document_url ||
-      shipment?.tracking_document_url ||
-      shipment?.waybill_url;
+      response?.waybill_document_url ||
+      response?.url ||
+      response?.[0]?.url ||
+      response?.[0]?.waybill_document_url ||
+      response?.waybills?.[0]?.url ||
+      response?.data?.[0]?.url;
 
     if (candidateUrl) {
       return candidateUrl;
     }
 
-    // Fallback: try a dedicated documents sub-resource, since the waybill
-    // clearly exists (confirmed in the BobGo dashboard) but isn't showing
-    // up as a field on the shipment object itself.
-    try {
-      const docsResponse = await bobgoRequest(`/shipments/${shipmentId}/documents`, "GET");
-      console.log(`BobGo documents sub-resource attempt ${i + 1}:`, JSON.stringify(docsResponse));
-      const docUrl =
-        docsResponse?.waybill_document_url ||
-        docsResponse?.url ||
-        docsResponse?.documents?.[0]?.url ||
-        docsResponse?.[0]?.url;
-      if (docUrl) return docUrl;
-    } catch (err) {
-      // Expected to possibly 404 if this endpoint doesn't exist - not fatal, just try again next loop.
-      console.log(`Documents sub-resource not available yet/doesn't exist (attempt ${i + 1}):`, err.message);
-    }
-
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  console.error(`No waybill document found for BobGo shipment ${shipmentId} after polling - continuing without it.`);
+  console.error(`No waybill document found for tracking reference ${trackingReference} after polling - continuing without it.`);
   return null;
 }
 
