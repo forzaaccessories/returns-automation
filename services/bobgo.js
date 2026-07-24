@@ -167,18 +167,10 @@ async function pollForWaybillDocument(trackingReference, attempts = 8, delayMs =
     }
     console.log(`BobGo waybill poll attempt ${i + 1}:`, JSON.stringify(response));
 
-    // Response shape unconfirmed beyond the endpoint/query format itself -
-    // check the plausible places a URL could live.
-    const candidateUrl =
-      response?.waybill_document_url ||
-      response?.url ||
-      response?.[0]?.url ||
-      response?.[0]?.waybill_document_url ||
-      response?.waybills?.[0]?.url ||
-      response?.data?.[0]?.url;
-
-    if (candidateUrl) {
-      return candidateUrl;
+    // Confirmed shape from live testing:
+    // { pdf_queued, file_history_id, shipments: [...], download_url, waybills_ready }
+    if (response?.waybills_ready && response?.download_url) {
+      return response.download_url;
     }
 
     await new Promise((resolve) => setTimeout(resolve, delayMs));
