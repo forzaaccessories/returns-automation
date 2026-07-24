@@ -86,9 +86,9 @@ async function processReturnRequest(payload) {
   );
 
   // 4. Credit the return in Unleashed
-  // Shopify order name is like "#1234"; Unleashed order number is "-WEBSHOPIFY-1234"
+  // Shopify order name is like "#1234"; Unleashed order number is "SHOPIFY-1234-WEB"
   const orderNumberDigits = order.name.replace("#", "");
-  const unleashedOrderNumber = `-WEBSHOPIFY-${orderNumberDigits}`;
+  const unleashedOrderNumber = `SHOPIFY-${orderNumberDigits}-WEB`;
   const unleashedOrder = await findSalesOrderByNumber(unleashedOrderNumber);
   if (!unleashedOrder) {
     console.error(`No matching Unleashed sales order found for ${unleashedOrderNumber} (Shopify order ${order.name}) - skipping credit note.`);
