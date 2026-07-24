@@ -156,16 +156,28 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
  */
 async function pollForWaybillDocument(shipmentId, attempts = 8, delayMs = 4000) {
   for (let i = 0; i < attempts; i++) {
-    const shipment = await bobgoRequest(`/shipments/${shipmentId}`, "GET");
-    console.log(`BobGo shipment poll attempt ${i + 1}:`, JSON.stringify(shipment));
+    let response;
+    try {
+      response = await bobgoRequest(`/shipments?ids[]=${shipmentId}`, "GET");
+    } catch (err) {
+      console.error(`BobGo shipment poll attempt ${i + 1} failed, stopping poll (non-fatal):`, err.message);
+      return null;
+    }
+    console.log(`BobGo shipment poll attempt ${i + 1}:`, JSON.stringify(response));
+
+    // Response shape here is unconfirmed - could be a bare array, or
+    // wrapped like { shipments: [...] } or { data: [...] }. Handle all.
+    const shipment = Array.isArray(response)
+      ? response[0]
+      : (response.shipments || response.data || [])[0] || response;
 
     const candidateUrl =
-      shipment.waybill_document_url ||
-      shipment.label_url ||
-      shipment.document_url ||
-      shipment.provider_document_url ||
-      shipment.tracking_document_url ||
-      shipment.waybill_url;
+      shipment?.waybill_document_url ||
+      shipment?.label_url ||
+      shipment?.document_url ||
+      shipment?.provider_document_url ||
+      shipment?.tracking_document_url ||
+      shipment?.waybill_url;
 
     if (candidateUrl) {
       return candidateUrl;
