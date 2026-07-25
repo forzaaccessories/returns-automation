@@ -129,16 +129,33 @@ async function processReturnRequest(payload) {
     });
   }
 
+  // Work out the discount % the customer got on their original order
+  // (from the first returned line item), so the same discount can be
+  // applied to the price of whatever replacement item they're exchanging
+  // into - not just the replacement item's undiscounted list price.
+  let discountRatio = 1;
+  const firstReturnLineItem = returnLineItems.nodes[0]?.fulfillmentLineItem?.lineItem;
+  if (firstReturnLineItem) {
+    const originalPrice = parseFloat(firstReturnLineItem.originalUnitPriceSet.shopMoney.amount);
+    const discountedPrice = parseFloat(firstReturnLineItem.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount);
+    if (originalPrice > 0) {
+      discountRatio = discountedPrice / originalPrice;
+    }
+  }
+
   // 5. If it's an exchange, create the new sales order for the warehouse to pick
   if (isExchange && unleashedOrder) {
     const exchangeLines = exchangeLineItems.nodes.map((item) => {
       // Exchange items weren't part of the original order, so there's no
-      // "previous" price to reuse - use the item's current Shopify price.
+      // "previous" price to reuse - use the item's current Shopify price,
+      // with the same discount % the customer got on their original order applied.
       const lineItem = item.lineItems?.[0];
+      const currentPrice = parseFloat(lineItem?.variant?.price ?? 0);
+      const discountedPrice = Math.round(currentPrice * discountRatio * 100) / 100;
       return {
         productCode: lineItem?.sku,
         quantity: item.quantity,
-        unitPrice: parseFloat(lineItem?.variant?.price ?? 0),
+        unitPrice: discountedPrice,
       };
     });
 
