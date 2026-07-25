@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const app = express();
+const SERVER_START_TIME = new Date().toISOString();
 
 const webhookRoutes = require("./routes/webhooks");
 
@@ -17,6 +18,16 @@ app.get("/", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+// Visit this URL right before testing to confirm your latest push is
+// actually live - Render sets RENDER_GIT_COMMIT automatically, no setup needed.
+app.get("/version", (req, res) => {
+  res.json({
+    commit: process.env.RENDER_GIT_COMMIT || "unknown (not running on Render)",
+    deployedAt: process.env.RENDER_GIT_COMMIT ? undefined : "local",
+    serverStartedAt: SERVER_START_TIME,
+  });
 });
 
 const PORT = process.env.PORT || 3000;
