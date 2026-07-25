@@ -99,22 +99,29 @@ async function createCreditNote({ customerCode, lines, reason, referenceOrderNam
  * Creates a new Sales Order for an exchange, set to "Placed" so the
  * warehouse picking queue picks it up automatically.
  *
- * Unleashed requires Tax, TaxRate, SubTotal, TaxTotal, and Total to be
- * calculated and included on POST (confirmed via their docs table) -
- * unlike Credit Notes, these aren't auto-calculated server-side, so we
- * compute them from the line items ourselves.
+ * Pricing: we deliberately do NOT set UnitPrice on the lines. Unleashed
+ * automatically applies pricing based on the Customer Pricing Hierarchy
+ * (Customer-specific pricing > Quantity pricing > the customer's assigned
+ * Sell Price Tier) - so omitting it lets Unleashed charge the correct
+ * tiered price for this customer rather than us guessing at it.
+ * Docs: https://support.unleashedsoftware.com/hc/en-us/articles/900002579026
+ *
+ * Pricing: line.unitPrice comes from Shopify and is VAT-inclusive (what
+ * the customer would pay). Unleashed's UnitPrice field needs to be the
+ * EX-VAT amount - same conversion as the credit note pricing.
  */
-async function createExchangeSalesOrder({ customerCode, lines, comments }) {
+async function createExchangeSalesOrder({ customerCode, lines, comments, delivery }) {
   const taxRate = parseFloat(process.env.UNLEASHED_TAX_RATE || "0.15");
 
   const salesOrderLines = lines.map((line, i) => {
-    const lineTotal = Math.round(line.quantity * line.unitPrice * 100) / 100;
+    const exVatUnitPrice = Math.round((line.unitPrice / (1 + taxRate)) * 100) / 100;
+    const lineTotal = Math.round(exVatUnitPrice * line.quantity * 100) / 100;
     const lineTax = Math.round(lineTotal * taxRate * 100) / 100;
     return {
       LineNumber: i + 1,
       Product: { ProductCode: line.productCode },
       OrderQuantity: line.quantity,
-      UnitPrice: line.unitPrice ?? 0,
+      UnitPrice: exVatUnitPrice,
       LineTotal: lineTotal,
       TaxRate: taxRate,
       LineTax: lineTax,
@@ -139,6 +146,16 @@ async function createExchangeSalesOrder({ customerCode, lines, comments }) {
     TaxTotal: taxTotal,
     Total: total,
     SalesOrderLines: salesOrderLines,
+    // Delivery details pulled from the customer's original Shopify order,
+    // so the replacement item ships to the same place/person.
+    DeliveryName: delivery?.name || "",
+    DeliveryStreetAddress: delivery?.address1 || "",
+    DeliveryStreetAddress2: delivery?.address2 || "",
+    DeliverySuburb: delivery?.suburb || "",
+    DeliveryCity: delivery?.city || "",
+    DeliveryRegion: delivery?.region || "",
+    DeliveryCountry: delivery?.country || "",
+    DeliveryPostCode: delivery?.postCode || "",
   };
   console.log("Unleashed /SalesOrders request payload:", JSON.stringify(payload));
   return unleashedRequest("/SalesOrders", "POST", payload);
