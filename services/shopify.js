@@ -47,6 +47,7 @@ async function getReturnDetails(returnGid) {
                   variant { id title }
                   originalUnitPriceSet { shopMoney { amount currencyCode } }
                   discountedUnitPriceSet { shopMoney { amount currencyCode } }
+                  discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount currencyCode } }
                 }
               }
             }

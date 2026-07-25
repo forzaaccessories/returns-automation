@@ -100,7 +100,9 @@ async function processReturnRequest(payload) {
       const lineItem = item.fulfillmentLineItem.lineItem;
       // Use the discounted price (what the customer actually paid per unit),
       // not the original list price, so the credit matches their receipt.
-      const unitPrice = parseFloat(lineItem.discountedUnitPriceSet.shopMoney.amount);
+      // discountedUnitPriceSet does NOT include coupon codes/order-level
+      // discounts per Shopify's own docs - only discountedUnitPriceAfterAllDiscountsSet does.
+      const unitPrice = parseFloat(lineItem.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount);
       return {
         productCode: lineItem.sku,
         quantity: item.quantity,
