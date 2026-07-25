@@ -52,6 +52,9 @@ async function processReturnRequest(payload) {
   }
 
   const { order, returnLineItems, exchangeLineItems, reverseFulfillmentOrders } = returnDetails;
+  console.log("Raw returnDetails.exchangeLineItems:", JSON.stringify(exchangeLineItems));
+  console.log("Raw order.customer:", JSON.stringify(order.customer));
+  console.log("Raw order.shippingAddress:", JSON.stringify(order.shippingAddress));
   const isExchange = exchangeLineItems?.nodes?.length > 0;
   const customer = order.customer || {};
   const address = order.shippingAddress || {};
@@ -128,6 +131,15 @@ async function processReturnRequest(payload) {
       customerCode: unleashedOrder.Customer.Guid,
       lines: exchangeLines,
       comments: `Exchange for original order ${order.name}`,
+      delivery: {
+        name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+        address1: address.address1 || "",
+        address2: address.address2 || "",
+        city: address.city || "",
+        region: address.province || "",
+        country: address.country || "",
+        postCode: address.zip || "",
+      },
     });
   }
 
