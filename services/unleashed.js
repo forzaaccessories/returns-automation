@@ -75,6 +75,7 @@ async function createCreditNote({ customerCode, lines, reason, referenceOrderNam
       Return: true, // return the stock to inventory
     })),
   };
+  console.log("Unleashed /CreditNotes/FreeCredit request payload:", JSON.stringify(payload));
   return unleashedRequest("/CreditNotes/FreeCredit", "POST", payload);
 }
 
@@ -90,6 +91,7 @@ async function createExchangeSalesOrder({ customerCode, lines, comments }) {
     RequiredDate: new Date().toISOString(),
     OrderStatus: "Placed",
     Comments: comments || "Exchange order - auto-created",
+    Tax: { TaxCode: process.env.UNLEASHED_TAX_CODE },
     SalesOrderLines: lines.map((line, i) => ({
       LineNumber: i + 1,
       Product: { ProductCode: line.productCode },
@@ -97,6 +99,7 @@ async function createExchangeSalesOrder({ customerCode, lines, comments }) {
       UnitPrice: line.unitPrice ?? 0,
     })),
   };
+  console.log("Unleashed /SalesOrders request payload:", JSON.stringify(payload));
   return unleashedRequest("/SalesOrders", "POST", payload);
 }
 
