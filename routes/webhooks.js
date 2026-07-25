@@ -6,14 +6,14 @@ const { getReturnDetails, addOrderNote, uploadReturnLabelAndNotify } = require("
 const { bookReturnCollection } = require("../services/bobgo");
 const { findSalesOrderByNumber, createCreditNote, createExchangeSalesOrder } = require("../services/unleashed");
 
-// This fires when YOU approve a return/exchange request in Shopify admin
-// (topic: returns/approve) - not when the customer first submits it.
-// This means the automation only runs after your manual review, so
-// self-serve requests never get auto-processed without a human check.
+// This fires when YOU click "Process return" in Shopify admin (topic:
+// returns/process) - this is the step AFTER "Approve", and is when
+// Shopify actually finalizes the exchange line item data (the replacement
+// product/SKU). Approving alone doesn't populate that data yet.
 //
 // This route needs the RAW body for HMAC verification,
 // so it's mounted with express.raw() in server.js (not express.json()).
-router.post("/returns-approved", async (req, res) => {
+router.post("/returns-processed", async (req, res) => {
   const hmac = req.get("X-Shopify-Hmac-Sha256");
   const valid = verifyShopifyWebhook(req.body, hmac, process.env.SHOPIFY_WEBHOOK_SECRET);
 
@@ -44,11 +44,23 @@ router.post("/returns-approved", async (req, res) => {
 
 async function processReturnRequest(payload) {
   const returnGid = payload.admin_graphql_api_id || payload.id;
-  const returnDetails = await getReturnDetails(returnGid);
+  let returnDetails = await getReturnDetails(returnGid);
 
   if (!returnDetails) {
     console.error("Could not fetch return details for", returnGid);
     return;
+  }
+
+  // If this is an exchange but the line item product data hasn't attached
+  // yet (seen in testing - looks like a timing gap in Shopify right after
+  // approval), wait briefly and re-fetch once before giving up on it.
+  const hasEmptyExchangeData = returnDetails.exchangeLineItems?.nodes?.some(
+    (node) => !node.lineItems || node.lineItems.length === 0
+  );
+  if (returnDetails.exchangeLineItems?.nodes?.length > 0 && hasEmptyExchangeData) {
+    console.log("Exchange line item data not populated yet - waiting 5s and re-fetching once.");
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    returnDetails = await getReturnDetails(returnGid);
   }
 
   const { order, returnLineItems, exchangeLineItems, reverseFulfillmentOrders } = returnDetails;
@@ -129,6 +141,11 @@ async function processReturnRequest(payload) {
         unitPrice: parseFloat(lineItem?.variant?.price ?? 0),
       };
     });
+
+    const hasValidProduct = exchangeLines.every((line) => line.productCode);
+    if (!hasValidProduct) {
+      console.error(`Exchange product data still missing for order ${order.name} after retry - skipping Unleashed exchange order. The credit note above was still created; you'll need to manually create the exchange sales order in Unleashed for this one.`);
+    } else {
     await createExchangeSalesOrder({
       customerCode: unleashedOrder.Customer.Guid,
       lines: exchangeLines,
@@ -143,6 +160,7 @@ async function processReturnRequest(payload) {
         postCode: address.zip || "",
       },
     });
+    }
   }
 
   console.log(`Processed ${isExchange ? "exchange" : "return"} for order ${order.name}`);

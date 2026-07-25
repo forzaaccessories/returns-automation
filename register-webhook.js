@@ -8,11 +8,11 @@ const { getAccessToken } = require("./services/shopifyAuth");
 
 const STORE = process.env.SHOPIFY_STORE;
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-07";
-const CALLBACK_URL = process.env.RENDER_APP_URL; // e.g. https://returns-automation.onrender.com/webhooks/returns-approved
+const CALLBACK_URL = process.env.RENDER_APP_URL; // e.g. https://returns-automation.onrender.com/webhooks/returns-processed
 
 async function main() {
   if (!CALLBACK_URL) {
-    console.error("Set RENDER_APP_URL in your .env first, e.g. https://returns-automation.onrender.com/webhooks/returns-approved");
+    console.error("Set RENDER_APP_URL in your .env first, e.g. https://returns-automation.onrender.com/webhooks/returns-processed");
     process.exit(1);
   }
 
@@ -21,7 +21,7 @@ async function main() {
   const mutation = `
     mutation {
       webhookSubscriptionCreate(
-        topic: RETURNS_APPROVE
+        topic: RETURNS_PROCESS
         webhookSubscription: {
           callbackUrl: "${CALLBACK_URL}"
           format: JSON
