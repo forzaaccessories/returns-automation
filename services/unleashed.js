@@ -59,6 +59,8 @@ async function findSalesOrderByNumber(orderNumber) {
  * Docs: https://apidocs.unleashedsoftware.com/CreditNotes
  */
 async function createCreditNote({ customerCode, lines, reason, referenceOrderName }) {
+  const taxRate = parseFloat(process.env.UNLEASHED_TAX_RATE || "0.15");
+
   const payload = {
     Comments: reason || "Customer return",
     CreditDate: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
@@ -70,20 +72,59 @@ async function createCreditNote({ customerCode, lines, reason, referenceOrderNam
     CreditLines: lines.map((line) => ({
       Product: { ProductCode: line.productCode },
       CreditQuantity: line.quantity,
-      CreditPrice: line.unitPrice,
+      // line.unitPrice from Shopify is VAT-inclusive (what the customer
+      // paid). Unleashed's CreditPrice needs to be the EX-VAT amount -
+      // it adds VAT on top itself to reach the inclusive total.
+      CreditPrice: Math.round((line.unitPrice / (1 + taxRate)) * 100) / 100,
       Reason: reason || "Customer return",
-      Return: true, // return the stock to inventory
+      // Don't auto-restock: physical stock goes into a returns bin first
+      // for inspection/repackaging before being manually added back via
+      // a stock adjustment once checked.
+      Return: false,
     })),
   };
   console.log("Unleashed /CreditNotes/FreeCredit request payload:", JSON.stringify(payload));
-  return unleashedRequest("/CreditNotes/FreeCredit", "POST", payload);
+  const createdNote = await unleashedRequest("/CreditNotes/FreeCredit", "POST", payload);
+
+  // New credit notes land in "Parked" status by default - complete it
+  // immediately so it doesn't sit waiting for manual completion.
+  if (createdNote?.Guid) {
+    await unleashedRequest(`/CreditNotes/${createdNote.Guid}/Complete`, "POST", {});
+  }
+
+  return createdNote;
 }
 
 /**
  * Creates a new Sales Order for an exchange, set to "Placed" so the
  * warehouse picking queue picks it up automatically.
+ *
+ * Unleashed requires Tax, TaxRate, SubTotal, TaxTotal, and Total to be
+ * calculated and included on POST (confirmed via their docs table) -
+ * unlike Credit Notes, these aren't auto-calculated server-side, so we
+ * compute them from the line items ourselves.
  */
 async function createExchangeSalesOrder({ customerCode, lines, comments }) {
+  const taxRate = parseFloat(process.env.UNLEASHED_TAX_RATE || "0.15");
+
+  const salesOrderLines = lines.map((line, i) => {
+    const lineTotal = Math.round(line.quantity * line.unitPrice * 100) / 100;
+    const lineTax = Math.round(lineTotal * taxRate * 100) / 100;
+    return {
+      LineNumber: i + 1,
+      Product: { ProductCode: line.productCode },
+      OrderQuantity: line.quantity,
+      UnitPrice: line.unitPrice ?? 0,
+      LineTotal: lineTotal,
+      TaxRate: taxRate,
+      LineTax: lineTax,
+    };
+  });
+
+  const subTotal = Math.round(salesOrderLines.reduce((sum, l) => sum + l.LineTotal, 0) * 100) / 100;
+  const taxTotal = Math.round(salesOrderLines.reduce((sum, l) => sum + l.LineTax, 0) * 100) / 100;
+  const total = Math.round((subTotal + taxTotal) * 100) / 100;
+
   const payload = {
     Customer: { Guid: customerCode },
     Warehouse: { WarehouseCode: process.env.UNLEASHED_WAREHOUSE_CODE },
@@ -91,13 +132,13 @@ async function createExchangeSalesOrder({ customerCode, lines, comments }) {
     RequiredDate: new Date().toISOString(),
     OrderStatus: "Placed",
     Comments: comments || "Exchange order - auto-created",
-    Tax: { TaxCode: process.env.UNLEASHED_TAX_CODE },
-    SalesOrderLines: lines.map((line, i) => ({
-      LineNumber: i + 1,
-      Product: { ProductCode: line.productCode },
-      OrderQuantity: line.quantity,
-      UnitPrice: line.unitPrice ?? 0,
-    })),
+    ExchangeRate: 1,
+    Tax: { TaxCode: process.env.UNLEASHED_TAX_CODE, TaxRate: taxRate },
+    TaxRate: taxRate,
+    SubTotal: subTotal,
+    TaxTotal: taxTotal,
+    Total: total,
+    SalesOrderLines: salesOrderLines,
   };
   console.log("Unleashed /SalesOrders request payload:", JSON.stringify(payload));
   return unleashedRequest("/SalesOrders", "POST", payload);
