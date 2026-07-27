@@ -27,7 +27,18 @@ async function main() {
     },
     body: JSON.stringify({ url: webhookUrl }),
   });
-  const json = await res.json();
+
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    console.error(`Stitch returned a non-JSON response (status ${res.status}):`, text);
+    if (res.status === 409) {
+      console.error("\nThis means a webhook for this URL already exists. Go to the Stitch Express dashboard's Webhooks page, delete the existing one, then run this script again.");
+    }
+    process.exit(1);
+  }
   console.log(JSON.stringify(json, null, 2));
 
   if (json.success) {
