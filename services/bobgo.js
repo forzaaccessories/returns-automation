@@ -65,27 +65,42 @@ async function bookReturnCollection({ customer, address, parcels, reference, cus
     instruction: "customer_collection", // collect FROM customer
   };
 
-  // 1. Get a rate/quote
+  // 1. Get a rate/quote - retry a few times if providers are still
+  // "pending" (rate calculation not finished yet), rather than failing
+  // immediately. Seen in practice for longer-distance addresses.
   console.log("BobGo /rates request payload:", JSON.stringify(shipmentPayload));
-  const ratesResponse = await bobgoRequest("/rates", "POST", shipmentPayload);
-  console.log("BobGo /rates raw response:", JSON.stringify(ratesResponse));
+  let ratesResponse;
+  let allRates = [];
+  const rateAttempts = 4;
+  for (let i = 0; i < rateAttempts; i++) {
+    ratesResponse = await bobgoRequest("/rates", "POST", shipmentPayload);
+    console.log(`BobGo /rates raw response (attempt ${i + 1}):`, JSON.stringify(ratesResponse));
 
-  // BobGo nests rates per courier: provider_rate_requests[].responses[]
-  const allRates = (ratesResponse.provider_rate_requests || [])
-    .filter((provider) => provider.status === "success")
-    .flatMap((provider) =>
-      (provider.responses || [])
-        .filter((r) => r.status === "success")
-        .map((r) => ({
-          provider_slug: provider.provider_slug,
-          provider_name: provider.provider_name,
-          service_level_code: r.service_level_code,
-          rate_amount: r.rate_amount, // VAT-inclusive, what you're actually charged
-        }))
-    );
+    // BobGo nests rates per courier: provider_rate_requests[].responses[]
+    allRates = (ratesResponse.provider_rate_requests || [])
+      .filter((provider) => provider.status === "success")
+      .flatMap((provider) =>
+        (provider.responses || [])
+          .filter((r) => r.status === "success")
+          .map((r) => ({
+            provider_slug: provider.provider_slug,
+            provider_name: provider.provider_name,
+            service_level_code: r.service_level_code,
+            rate_amount: r.rate_amount, // VAT-inclusive, what you're actually charged
+          }))
+      );
+
+    if (allRates.length) break;
+
+    const stillPending = (ratesResponse.provider_rate_requests || []).some((p) => p.status === "pending");
+    if (!stillPending) break; // genuinely no rates available, not just slow - stop retrying
+
+    console.log(`BobGo rates still pending, retrying (attempt ${i + 1}/${rateAttempts})...`);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
 
   if (!allRates.length) {
-    throw new Error(`BobGo returned no usable rates for this collection. Full response: ${JSON.stringify(ratesResponse)}`);
+    throw new Error(`BobGo returned no usable rates for this collection after ${rateAttempts} attempts. Full response: ${JSON.stringify(ratesResponse)}`);
   }
 
   // Always pick the cheapest available rate across every courier.
