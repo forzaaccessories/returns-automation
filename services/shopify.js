@@ -147,4 +147,91 @@ async function uploadReturnLabelAndNotify({ reverseFulfillmentOrderId, fileUrl }
   return result.reverseDelivery;
 }
 
-module.exports = { getReturnDetails, addOrderNote, uploadReturnLabelAndNotify };
+/**
+ * Checks an order for an active fulfillment hold whose notes mention
+ * "Awaiting payment" - the manual hold staff apply when an exchange
+ * item costs more and payment is still owed.
+ * Returns [] if none, or a list of { fulfillmentOrderId, holdId } to release.
+ */
+async function findAwaitingPaymentHolds(orderGid) {
+  const query = `
+    query GetOrderHolds($id: ID!) {
+      order(id: $id) {
+        fulfillmentOrders(first: 10) {
+          nodes {
+            id
+            fulfillmentHolds {
+              id
+              reason
+              reasonNotes
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: orderGid });
+  const fulfillmentOrders = data.order?.fulfillmentOrders?.nodes || [];
+
+  const holdsToRelease = [];
+  for (const fo of fulfillmentOrders) {
+    for (const hold of fo.fulfillmentHolds || []) {
+      if ((hold.reasonNotes || "").toLowerCase().includes("awaiting payment")) {
+        holdsToRelease.push({ fulfillmentOrderId: fo.id, holdId: hold.id });
+      }
+    }
+  }
+  return holdsToRelease;
+}
+
+/** Releases a specific fulfillment hold (not all holds - just this one). */
+async function releaseFulfillmentHold(fulfillmentOrderId, holdId) {
+  const mutation = `
+    mutation ReleaseHold($id: ID!, $holdIds: [ID!]) {
+      fulfillmentOrderReleaseHold(id: $id, holdIds: $holdIds) {
+        fulfillmentOrder { id status requestStatus }
+        userErrors { field message code }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(mutation, { id: fulfillmentOrderId, holdIds: [holdId] });
+  const result = data.fulfillmentOrderReleaseHold;
+  if (result.userErrors?.length) {
+    throw new Error(`Failed to release fulfillment hold: ${JSON.stringify(result.userErrors)}`);
+  }
+  return result.fulfillmentOrder;
+}
+
+/** Looks up an order by its name (e.g. "#7917") and returns its most
+ * recent OPEN return - used when a Stitch payment confirmation comes in
+ * later and we need to re-find the exchange to finish creating it. */
+async function findOpenReturnByOrderName(orderName) {
+  const cleanName = orderName.replace("#", "");
+  const query = `
+    query FindOrder($query: String!) {
+      orders(first: 1, query: $query) {
+        nodes {
+          id
+          name
+          returns(first: 10) {
+            nodes { id name status }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { query: `name:#${cleanName}` });
+  const order = data.orders?.nodes?.[0];
+  if (!order) return null;
+  const openReturn = order.returns?.nodes?.find((r) => r.status === "OPEN");
+  return openReturn ? openReturn.id : null;
+}
+
+module.exports = {
+  getReturnDetails,
+  addOrderNote,
+  uploadReturnLabelAndNotify,
+  findAwaitingPaymentHolds,
+  releaseFulfillmentHold,
+  findOpenReturnByOrderName,
+};

@@ -32,4 +32,19 @@ async function sendWaybillEmail({ to, customerName, orderName, waybillUrl, track
   });
 }
 
-module.exports = { sendWaybillEmail };
+async function sendPaymentLinkEmail({ to, customerName, orderName, paymentLink, amountRands }) {
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM,
+    to,
+    subject: `Payment needed to complete your exchange for order ${orderName}`,
+    html: `
+      <p>Hi ${customerName},</p>
+      <p>Thanks for your exchange request for order ${orderName}. Since the replacement item costs a bit more, there's a small balance to settle before we can send it out.</p>
+      <p><strong>Amount due: R${amountRands.toFixed(2)}</strong></p>
+      <p><a href="${paymentLink}" target="_blank">Pay now to complete your exchange</a></p>
+      <p>Once payment is received, we'll process your exchange right away.</p>
+    `,
+  });
+}
+
+module.exports = { sendWaybillEmail, sendPaymentLinkEmail };
