@@ -156,6 +156,7 @@ async function createExchangeSalesOrder({ customerCode, lines, comments, deliver
     DeliveryRegion: delivery?.region || "",
     DeliveryCountry: delivery?.country || "",
     DeliveryPostCode: delivery?.postCode || "",
+    DeliveryMethod: "Economy \u2013 Courier",
   };
   console.log("Unleashed /SalesOrders request payload:", JSON.stringify(payload));
   return unleashedRequest("/SalesOrders", "POST", payload);
